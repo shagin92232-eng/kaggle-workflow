@@ -59,6 +59,13 @@ class Settings:
         )
     )
 
+    # Gemini (Google AI Studio) — used as the final LLM fallback when all
+    # OpenRouter models fail. Empty = disabled.
+    gemini_api_key: str = field(default_factory=lambda: _get("GEMINI_API_KEY"))
+    gemini_model: str = field(
+        default_factory=lambda: _get("GEMINI_MODEL", "gemini-3-flash-preview")
+    )
+
     # Trend reference (YouTube always used if key present; others optional)
     youtube_data_api_key: str = field(default_factory=lambda: _get("YOUTUBE_DATA_API_KEY"))
     tiktok_api_key: str = field(default_factory=lambda: _get("TIKTOK_API_KEY"))

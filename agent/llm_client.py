@@ -1,4 +1,4 @@
-"""OpenRouter client for Qwen3 — retries, rate-limit backoff, JSON mode."""
+"""LLM client — OpenRouter with Gemini fallback; retries, backoff, JSON mode."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from utils.logger import get_logger
 log = get_logger(__name__)
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Google AI Studio exposes an OpenAI-compatible endpoint — same payload shape
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 MAX_RETRIES = 4
 
 
@@ -40,14 +42,10 @@ async def chat(
 
     OPENROUTER_MODEL may be a comma-separated list; on a permanent error
     (model removed, free tier gone) the next model in the list is tried.
+    If every OpenRouter model fails and GEMINI_API_KEY is set, Gemini
+    (Google AI Studio) is used as the final fallback.
     """
     global _model_index
-    headers = {
-        "Authorization": f"Bearer {settings.openrouter_api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/video-to-shorts-automation",
-        "X-Title": "video-to-shorts-automation",
-    }
     payload = {
         "messages": [
             {"role": "system", "content": system},
@@ -56,31 +54,52 @@ async def chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    or_headers = {
+        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/video-to-shorts-automation",
+        "X-Title": "video-to-shorts-automation",
+    }
 
     models = settings.openrouter_models
     start = min(_model_index, len(models) - 1)
+    or_error: Exception | None = None
     for mi in range(start, len(models)):
         try:
-            content = await _chat_once(dict(payload, model=models[mi]), headers)
+            content = await _chat_once(dict(payload, model=models[mi]), or_headers, API_URL)
             _model_index = mi
             return content
         except LLMError as exc:  # permanent OR retries exhausted (e.g. daily rate limit)
+            or_error = exc
             if mi + 1 < len(models):
                 log.warning(
                     f"Model '{models[mi]}' failed ({exc}) — "
                     f"falling back to '{models[mi + 1]}'"
                 )
-                continue
-            raise
+
+    if settings.gemini_api_key:
+        log.warning(
+            f"All OpenRouter models failed ({or_error}) — "
+            f"falling back to Gemini '{settings.gemini_model}'"
+        )
+        gm_headers = {
+            "Authorization": f"Bearer {settings.gemini_api_key}",
+            "Content-Type": "application/json",
+        }
+        # low reasoning effort: clip finding doesn't need deep thinking and
+        # thinking tokens count against max_tokens on Gemini 3 models
+        gm_payload = dict(payload, model=settings.gemini_model, reasoning_effort="low")
+        return await _chat_once(gm_payload, gm_headers, GEMINI_API_URL)
+    raise or_error  # type: ignore[misc]
 
 
-async def _chat_once(payload: dict, headers: dict) -> str:
+async def _chat_once(payload: dict, headers: dict, api_url: str) -> str:
     """One model, with transient-error retries."""
     last_exc: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             async with httpx.AsyncClient(timeout=300) as client:
-                resp = await client.post(API_URL, headers=headers, json=payload)
+                resp = await client.post(api_url, headers=headers, json=payload)
             if resp.status_code == 429 or resp.status_code >= 500:
                 raise LLMError(f"OpenRouter transient error {resp.status_code}: {resp.text[:300]}")
             if resp.status_code >= 400:

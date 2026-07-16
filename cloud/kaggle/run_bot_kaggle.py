@@ -15,6 +15,8 @@ Every run:
        os.environ["TELEGRAM_BOT_TOKEN"] = "..."
        os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-..."
        os.environ["YOUTUBE_DATA_API_KEY"] = "..."
+       # Gemini fallback (recommended) — https://aistudio.google.com/apikey
+       os.environ["GEMINI_API_KEY"] = "AQ...."
        # YouTube cookies — REQUIRED on Kaggle, or downloads fail with
        # "Sign in to confirm you're not a bot". Paste the full content of
        # your Netscape-format cookies.txt between the triple quotes:
@@ -145,6 +147,8 @@ env_lines = [
     "MUSIC_LIBRARY_DIR=music/library",
     "OVERLAY_LIBRARY_DIR=assets/overlays",
     f"YTDLP_COOKIES_FILE={cookies_path}",
+    f"GEMINI_API_KEY={os.environ.get('GEMINI_API_KEY', '')}",
+    f"GEMINI_MODEL={os.environ.get('GEMINI_MODEL', 'gemini-3-flash-preview')}",
 ]
 (APP / ".env").write_text("\n".join(env_lines))
 print("✅ .env written")
