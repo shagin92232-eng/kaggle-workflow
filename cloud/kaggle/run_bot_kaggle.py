@@ -61,20 +61,29 @@ subprocess.run(
 )
 
 # ---- 3. find the persisted whisper model (no download) ----
+# Priority: attached dataset → notebook-persistent /kaggle/working copy →
+# one-time download into /kaggle/working (persists if Persistence=Files only)
+PERSIST_DIR = Path("/kaggle/working/whisper-models/large-v3")
 model_path = ""
 for cand in [Path("/kaggle/input/whisper-models/large-v3"),
              *Path("/kaggle/input").glob("*/large-v3"),
              *Path("/kaggle/input").glob("*/medium"),
-             *Path("/kaggle/input").glob("*/small")]:
-    if cand.exists():
+             *Path("/kaggle/input").glob("*/small"),
+             PERSIST_DIR]:
+    if cand.exists() and any(cand.iterdir()):
         model_path = str(cand)
         break
 if model_path:
     print(f"✅ Using persisted Whisper model: {model_path} (no download)")
 else:
-    model_path = "small"
-    print("⚠️ whisper-models dataset not attached — will download 'small' once. "
-          "Attach the dataset next time for instant start.")
+    print("⚠️ No persisted model found — downloading large-v3 ONCE into /kaggle/working…")
+    print("   (Enable notebook Settings → Persistence → 'Files only' so this survives restarts)")
+    from faster_whisper import download_model  # installed via requirements
+
+    PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    download_model("large-v3", output_dir=str(PERSIST_DIR))
+    model_path = str(PERSIST_DIR)
+    print(f"✅ Model saved to {model_path}")
 
 # ---- 4. write .env ----
 env_lines = [
