@@ -25,6 +25,7 @@ The Whisper model loads from the attached dataset — nothing re-downloads.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,12 @@ subprocess.run(
 # Priority: attached dataset → notebook-persistent /kaggle/working copy →
 # one-time download into /kaggle/working (persists if Persistence=Files only)
 PERSIST_DIR = Path("/kaggle/working/whisper-models/large-v3")
+# A stopped cell can persist a half-written model.bin; the marker is only
+# created after a fully finished download, so wipe anything without it
+MARKER = PERSIST_DIR / ".download-complete"
+if PERSIST_DIR.exists() and not MARKER.exists():
+    print("🧹 Removing incomplete Whisper model left by an interrupted download…")
+    shutil.rmtree(PERSIST_DIR, ignore_errors=True)
 model_path = ""
 for cand in [Path("/kaggle/input/whisper-models/large-v3"),
              *Path("/kaggle/input").glob("*/large-v3"),
@@ -82,6 +89,7 @@ else:
 
     PERSIST_DIR.mkdir(parents=True, exist_ok=True)
     download_model("large-v3", output_dir=str(PERSIST_DIR))
+    MARKER.touch()
     model_path = str(PERSIST_DIR)
     print(f"✅ Model saved to {model_path}")
 
