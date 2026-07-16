@@ -36,6 +36,11 @@ if not REPO:
         "(your GitHub repo URL for this project)."
     )
 
+# Private repo support: inject token into the clone URL
+GH_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+if GH_TOKEN and REPO.startswith("https://github.com/"):
+    REPO = REPO.replace("https://github.com/", f"https://{GH_TOKEN}@github.com/")
+
 for var in ("TELEGRAM_BOT_TOKEN", "OPENROUTER_API_KEY"):
     if not os.environ.get(var, "").strip():
         raise SystemExit(f'❌ Set os.environ["{var}"] in a cell above first.')
