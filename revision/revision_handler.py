@@ -49,9 +49,19 @@ async def handle_revision(
     if not state.clips:
         return False
 
-    parsed = await parse_revision_request(text, state)
+    try:
+        parsed = await parse_revision_request(text, state)
+    except Exception as exc:  # noqa: BLE001 — LLM outage must not crash the bot
+        log.error(f"Revision request parsing failed: {exc}")
+        await notify(f"⚠️ I couldn't process that request right now ({exc}). Please try again.")
+        return True
+    if not isinstance(parsed, dict):
+        parsed = {}
     change = str(parsed.get("change_type", "unknown"))
-    idx = int(parsed.get("clip_index", -1))
+    try:
+        idx = int(parsed.get("clip_index") or -1)
+    except (TypeError, ValueError):
+        idx = -1
     params = parsed.get("params", {}) or {}
     note = str(parsed.get("note", ""))
 

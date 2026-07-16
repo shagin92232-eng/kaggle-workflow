@@ -19,6 +19,7 @@ _SUGGESTIONS = [
     ("quota", "API quota may be exhausted — wait a while and try again."),
     ("rate", "Rate limit hit — wait a few minutes and try again."),
     ("401", "An API key looks invalid — check your .env values."),
+    ("402", "OpenRouter credit/quota exhausted — use a ':free' model or wait for the daily reset."),
     ("403", "Access denied — check API key permissions / app approval."),
     ("ffmpeg", "FFmpeg processing failed — the video format may be unsupported."),
     ("not found", "A required file/tool was not found — check installation."),

@@ -21,6 +21,10 @@ class LLMError(RuntimeError):
     pass
 
 
+class PermanentLLMError(LLMError):
+    """4xx errors (bad key, no credit, unknown model) — retrying cannot help."""
+
+
 async def chat(
     system: str,
     user: str,
@@ -51,17 +55,26 @@ async def chat(
                 resp = await client.post(API_URL, headers=headers, json=payload)
             if resp.status_code == 429 or resp.status_code >= 500:
                 raise LLMError(f"OpenRouter transient error {resp.status_code}: {resp.text[:300]}")
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                raise PermanentLLMError(
+                    f"OpenRouter error {resp.status_code} — check OPENROUTER_API_KEY "
+                    f"and OPENROUTER_MODEL: {resp.text[:300]}"
+                )
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             if not content:
                 raise LLMError("Empty completion from OpenRouter")
             return content
-        except (httpx.HTTPError, LLMError, KeyError) as exc:
+        except PermanentLLMError:
+            raise
+        except (httpx.HTTPError, LLMError, KeyError, IndexError, ValueError) as exc:
             last_exc = exc
-            wait = 2**attempt
-            log.warning(f"LLM call failed (attempt {attempt}/{MAX_RETRIES}): {exc} — retrying in {wait}s")
-            await asyncio.sleep(wait)
+            if attempt < MAX_RETRIES:
+                wait = 2**attempt
+                log.warning(
+                    f"LLM call failed (attempt {attempt}/{MAX_RETRIES}): {exc} — retrying in {wait}s"
+                )
+                await asyncio.sleep(wait)
     raise LLMError(f"OpenRouter call failed after {MAX_RETRIES} attempts: {last_exc}")
 
 

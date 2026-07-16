@@ -31,6 +31,10 @@ async def generate_title(
     result = await llm_client.chat_json(
         system_prompt.TITLE_GENERATION_SYSTEM, user, temperature=0.8, max_tokens=800
     )
+    if isinstance(result, list):  # model occasionally wraps the object in an array
+        result = next((x for x in result if isinstance(x, dict)), {})
+    if not isinstance(result, dict):
+        result = {}
     title = str(result.get("title", "")).strip() or "Viral Moment 🔥"
     caption = str(result.get("caption", "")).strip()
     hashtags = [str(h).strip() for h in result.get("hashtags", []) if str(h).strip()]

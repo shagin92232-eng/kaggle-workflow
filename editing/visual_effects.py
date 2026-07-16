@@ -24,7 +24,7 @@ import random
 from pathlib import Path
 
 from config.settings import settings
-from utils.ffmpeg_utils import duration_of, run_ffmpeg
+from utils.ffmpeg_utils import duration_of, has_audio, run_ffmpeg
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -102,9 +102,14 @@ async def apply_effects(video: Path, dest: Path, effects: list[str]) -> tuple[Pa
     current = video
     if vf_parts:
         step1 = dest.with_name(dest.stem + "_fx.mp4")
+        # freeze_frame pads the video start — delay audio equally or lip-sync drifts
+        if freeze and has_audio(current):
+            audio_args = ["-af", "adelay=700:all=1", "-c:a", "aac", "-b:a", "192k"]
+        else:
+            audio_args = ["-c:a", "copy"]
         args = ["-i", str(current), "-vf", ",".join(vf_parts),
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-c:a", "copy", str(step1)]
+                *audio_args, str(step1)]
         await asyncio.to_thread(run_ffmpeg, args, "visual-effects")
         current = step1
 
