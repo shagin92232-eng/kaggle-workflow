@@ -15,6 +15,13 @@ Every run:
        os.environ["TELEGRAM_BOT_TOKEN"] = "..."
        os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-..."
        os.environ["YOUTUBE_DATA_API_KEY"] = "..."
+       # YouTube cookies — REQUIRED on Kaggle, or downloads fail with
+       # "Sign in to confirm you're not a bot". Paste the full content of
+       # your Netscape-format cookies.txt between the triple quotes:
+       os.environ["YTDLP_COOKIES_CONTENT"] = '''
+       # Netscape HTTP Cookie File
+       ...paste all lines from cookies.txt here...
+       '''
        # optional:
        os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"] = ""
 
@@ -93,14 +100,42 @@ else:
     model_path = str(PERSIST_DIR)
     print(f"✅ Model saved to {model_path}")
 
-# ---- 4. write .env ----
+# ---- 4. YouTube cookies (required, or yt-dlp gets bot-blocked on Kaggle) ----
+# Source priority: pasted YTDLP_COOKIES_CONTENT → a *cookies*.txt file in any
+# attached input dataset. Written into the app so .env can point at it.
+cookies_path = ""
+cookies_content = os.environ.get("YTDLP_COOKIES_CONTENT", "").strip()
+if cookies_content:
+    cred_dir = APP / "credentials"
+    cred_dir.mkdir(exist_ok=True)
+    dest = cred_dir / "youtube_cookies.txt"
+    # De-indent pasted lines; cookie fields are TAB-separated so this is safe
+    dest.write_text("\n".join(l.strip() for l in cookies_content.splitlines()) + "\n")
+    cookies_path = str(dest)
+    print("✅ YouTube cookies written from YTDLP_COOKIES_CONTENT")
+else:
+    for cand in Path("/kaggle/input").glob("*/*cookies*.txt"):
+        cookies_path = str(cand)
+        print(f"✅ Using YouTube cookies from dataset: {cand}")
+        break
+if not cookies_path:
+    print("⚠️ No YouTube cookies configured — downloads WILL fail with "
+          "'Sign in to confirm you're not a bot'. Set YTDLP_COOKIES_CONTENT "
+          "in the secrets cell or attach a dataset containing cookies.txt.")
+
+# ---- 5. write .env ----
 env_lines = [
     f"TELEGRAM_BOT_TOKEN={os.environ['TELEGRAM_BOT_TOKEN']}",
     f"OPENROUTER_API_KEY={os.environ['OPENROUTER_API_KEY']}",
     f"YOUTUBE_DATA_API_KEY={os.environ.get('YOUTUBE_DATA_API_KEY', '')}",
     f"GOOGLE_SHEETS_SPREADSHEET_ID={os.environ.get('GOOGLE_SHEETS_SPREADSHEET_ID', '')}",
     "GOOGLE_SHEETS_CREDENTIALS_JSON=credentials/google_sheets_credentials.json",
-    f"OPENROUTER_MODEL={os.environ.get('OPENROUTER_MODEL', 'qwen/qwen3-235b-a22b:free')}",
+    "OPENROUTER_MODEL=" + os.environ.get(
+        "OPENROUTER_MODEL",
+        "qwen/qwen3-next-80b-a3b-instruct:free,"
+        "meta-llama/llama-3.3-70b-instruct:free,"
+        "nvidia/nemotron-3-super-120b-a12b:free",
+    ),
     "WHISPER_MODE=local",
     f"WHISPER_MODEL={model_path}",
     "MAX_CLIPS_PER_VIDEO=8",
@@ -109,6 +144,7 @@ env_lines = [
     "WORK_DIR=data/jobs",
     "MUSIC_LIBRARY_DIR=music/library",
     "OVERLAY_LIBRARY_DIR=assets/overlays",
+    f"YTDLP_COOKIES_FILE={cookies_path}",
 ]
 (APP / ".env").write_text("\n".join(env_lines))
 print("✅ .env written")
@@ -121,7 +157,7 @@ if sheets_json:
     (cred_dir / "google_sheets_credentials.json").write_text(sheets_json)
     print("✅ Google Sheets credentials written")
 
-# ---- 5. run the bot (blocks; stop the cell to stop the bot) ----
+# ---- 6. run the bot (blocks; stop the cell to stop the bot) ----
 print("🚀 Starting Telegram bot — go send it a video link!")
 os.chdir(APP)
 subprocess.run([sys.executable, "-m", "bot.main"], check=True)

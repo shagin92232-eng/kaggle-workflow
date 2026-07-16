@@ -64,12 +64,20 @@ def _download_ytdlp(url: str, dest_dir: Path) -> Path:
     # yt-dlp writes refreshed cookies back to the file, so keep a writable
     # copy — Kaggle input datasets are read-only.
     cookie_file = os.getenv("YTDLP_COOKIES_FILE", "")
-    if cookie_file and Path(cookie_file).exists():
-        writable = Path(tempfile.gettempdir()) / "ytdlp_cookies.txt"
-        if not writable.exists():
-            shutil.copyfile(cookie_file, writable)
-        log.info(f"Using YouTube cookies from {cookie_file}")
-        opts["cookiefile"] = str(writable)
+    if cookie_file:
+        src = Path(cookie_file)
+        if not src.is_absolute():
+            src = Path(__file__).resolve().parent.parent / src
+        if src.exists():
+            writable = Path(tempfile.gettempdir()) / "ytdlp_cookies.txt"
+            # Recopy when the source was re-exported after our last copy,
+            # otherwise stale cookies would keep failing forever.
+            if not writable.exists() or src.stat().st_mtime > writable.stat().st_mtime:
+                shutil.copyfile(src, writable)
+            log.info(f"Using YouTube cookies from {src}")
+            opts["cookiefile"] = str(writable)
+        else:
+            log.warning(f"YTDLP_COOKIES_FILE set but not found: {src}")
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))

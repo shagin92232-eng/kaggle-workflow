@@ -25,13 +25,23 @@ class PermanentLLMError(LLMError):
     """4xx errors (bad key, no credit, unknown model) — retrying cannot help."""
 
 
+# Index of the first known-working model in the fallback list, so a dead
+# model isn't re-tried on every single call once we've fallen past it.
+_model_index = 0
+
+
 async def chat(
     system: str,
     user: str,
     temperature: float = 0.7,
     max_tokens: int = 4000,
 ) -> str:
-    """Single-turn chat completion. Returns assistant text."""
+    """Single-turn chat completion. Returns assistant text.
+
+    OPENROUTER_MODEL may be a comma-separated list; on a permanent error
+    (model removed, free tier gone) the next model in the list is tried.
+    """
+    global _model_index
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",
         "Content-Type": "application/json",
@@ -39,7 +49,6 @@ async def chat(
         "X-Title": "video-to-shorts-automation",
     }
     payload = {
-        "model": settings.openrouter_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -48,6 +57,25 @@ async def chat(
         "max_tokens": max_tokens,
     }
 
+    models = settings.openrouter_models
+    start = min(_model_index, len(models) - 1)
+    for mi in range(start, len(models)):
+        try:
+            content = await _chat_once(dict(payload, model=models[mi]), headers)
+            _model_index = mi
+            return content
+        except LLMError as exc:  # permanent OR retries exhausted (e.g. daily rate limit)
+            if mi + 1 < len(models):
+                log.warning(
+                    f"Model '{models[mi]}' failed ({exc}) — "
+                    f"falling back to '{models[mi + 1]}'"
+                )
+                continue
+            raise
+
+
+async def _chat_once(payload: dict, headers: dict) -> str:
+    """One model, with transient-error retries."""
     last_exc: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:

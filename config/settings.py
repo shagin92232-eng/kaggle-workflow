@@ -49,9 +49,14 @@ class Settings:
     telegram_bot_token: str = field(default_factory=lambda: _get("TELEGRAM_BOT_TOKEN"))
     openrouter_api_key: str = field(default_factory=lambda: _get("OPENROUTER_API_KEY"))
 
-    # LLM
+    # LLM — comma-separated fallback list; the client tries each in order
+    # when a model is unavailable (free models come and go on OpenRouter)
     openrouter_model: str = field(
-        default_factory=lambda: _get("OPENROUTER_MODEL", "qwen/qwen3-235b-a22b")
+        default_factory=lambda: _get(
+            "OPENROUTER_MODEL",
+            "qwen/qwen3-next-80b-a3b-instruct:free,"
+            "meta-llama/llama-3.3-70b-instruct:free",
+        )
     )
 
     # Trend reference (YouTube always used if key present; others optional)
@@ -108,6 +113,10 @@ class Settings:
             raise ConfigError("WHISPER_MODE must be 'local' or 'remote'")
         if self.whisper_mode == "remote" and not self.whisper_remote_url:
             raise ConfigError("WHISPER_MODE=remote requires WHISPER_REMOTE_URL")
+
+    @property
+    def openrouter_models(self) -> list[str]:
+        return [m.strip() for m in self.openrouter_model.split(",") if m.strip()]
 
     @property
     def sheets_enabled(self) -> bool:
