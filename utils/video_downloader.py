@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -57,6 +60,16 @@ def _download_ytdlp(url: str, dest_dir: Path) -> Path:
         "quiet": True,
         "no_warnings": True,
     }
+    # YouTube blocks cloud-server IPs unless logged-in cookies are provided.
+    # yt-dlp writes refreshed cookies back to the file, so keep a writable
+    # copy — Kaggle input datasets are read-only.
+    cookie_file = os.getenv("YTDLP_COOKIES_FILE", "")
+    if cookie_file and Path(cookie_file).exists():
+        writable = Path(tempfile.gettempdir()) / "ytdlp_cookies.txt"
+        if not writable.exists():
+            shutil.copyfile(cookie_file, writable)
+        log.info(f"Using YouTube cookies from {cookie_file}")
+        opts["cookiefile"] = str(writable)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))
