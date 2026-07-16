@@ -1,0 +1,10 @@
+services:
+  shorts-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./music:/app/music
+      - ./assets:/app/assets
+      - ./credentials:/app/credentials:ro
