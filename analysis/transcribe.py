@@ -43,13 +43,37 @@ def _extract_audio(video: Path, dest: Path) -> Path:
     return dest
 
 
+def _load_local_model():
+    """Load the model; if a local model directory is corrupted (e.g. an
+    interrupted download left a half-written model.bin), wipe it and
+    re-download once, then retry."""
+    from faster_whisper import WhisperModel
+
+    try:
+        return WhisperModel(settings.whisper_model, device="auto", compute_type="auto")
+    except (RuntimeError, OSError, ValueError) as exc:
+        model_dir = Path(settings.whisper_model)
+        if not model_dir.is_dir():
+            raise  # a size name like "small" — nothing on disk to repair
+        import shutil
+
+        from faster_whisper import download_model
+
+        log.warning(f"Model at {model_dir} failed to load ({exc}) — re-downloading it once…")
+        shutil.rmtree(model_dir, ignore_errors=True)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        download_model(model_dir.name, output_dir=str(model_dir))
+        (model_dir / ".download-complete").touch()
+        log.info(f"Model re-downloaded to {model_dir}")
+        return WhisperModel(str(model_dir), device="auto", compute_type="auto")
+
+
 def _transcribe_local_sync(audio: Path) -> dict:
     global _local_model
-    from faster_whisper import WhisperModel
 
     if _local_model is None:
         log.info(f"Loading faster-whisper model '{settings.whisper_model}' (one-time per process)")
-        _local_model = WhisperModel(settings.whisper_model, device="auto", compute_type="auto")
+        _local_model = _load_local_model()
 
     segments, info = _local_model.transcribe(str(audio), word_timestamps=True)
     out = {"language": info.language, "segments": []}
