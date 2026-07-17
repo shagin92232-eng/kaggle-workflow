@@ -60,6 +60,12 @@ def _download_ytdlp(url: str, dest_dir: Path) -> Path:
         "quiet": True,
         "no_warnings": True,
     }
+    # Merging separate video+audio streams requires ffmpeg. Without it,
+    # take the best progressive (single-file) format instead of aborting.
+    if shutil.which("ffmpeg") is None:
+        log.warning("ffmpeg not found — falling back to progressive format")
+        opts["format"] = "b[height<=1080]/b"
+        del opts["merge_output_format"]
     # YouTube blocks cloud-server IPs unless logged-in cookies are provided.
     # yt-dlp writes refreshed cookies back to the file, so keep a writable
     # copy — Kaggle input datasets are read-only.
